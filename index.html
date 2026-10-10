@@ -1106,6 +1106,33 @@
             width: 62px;
             height: 62px
         }
+
+        .wallet-copy-box {
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+            margin: 12px 0
+        }
+
+        .wallet-copy-box textarea {
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 68px;
+            background: #101720;
+            color: #d8ffeb;
+            border: 1px solid #354b47;
+            border-radius: 12px;
+            padding: 12px;
+            font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+            overflow-wrap: anywhere;
+            resize: none;
+            user-select: text;
+            -webkit-user-select: text
+        }
+
+        .wallet-copy-box button {
+            width: 100%
+        }
     </style>
 </head>
 
@@ -1137,7 +1164,12 @@
                 </div><span id="walletState" class="status">Loading...</span>
             </div>
             <div class="row subtle-row"><span class="muted">Wallet</span><span class="mono" id="walletId">—</span></div>
-            <button id="walletBtn" class="secondary compact">Create / load devnet wallet</button>
+            <div class="wallet-copy-box"><textarea id="walletAddressFull" readonly rows="2"
+                    aria-label="Full sender wallet address"
+                    placeholder="Your address will appear here"></textarea><button id="copyWalletBtn"
+                    class="secondary compact" type="button">Copy wallet address</button><span id="copyWalletStatus"
+                    class="muted" aria-live="polite" style="font-size:12px"></span></div><button id="walletBtn"
+                class="secondary compact">Create / load devnet wallet</button>
             <p class="muted" style="font-size:12px">Fund this wallet with devnet SOL before sending. Keep this browser’s
                 wallet data safe.</p>
         </section>
@@ -1235,7 +1267,7 @@
         function dbOpen() { return new Promise((res, rej) => { let r = indexedDB.open('gridless-solana-devnet-v1', 1); r.onupgradeneeded = () => r.result.createObjectStore('wallet'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error) }) }
         async function dbGet() { const d = await dbOpen(); return new Promise((res, rej) => { const r = d.transaction('wallet').objectStore('wallet').get('keypair'); r.onsuccess = () => { d.close(); res(r.result) }; r.onerror = () => { d.close(); rej(r.error) } }) }
         async function dbPut(v) { const d = await dbOpen(); return new Promise((res, rej) => { let t = d.transaction('wallet', 'readwrite'); t.objectStore('wallet').put(v, 'keypair'); t.oncomplete = () => { d.close(); res() }; t.onerror = () => { d.close(); rej(t.error) } }) }
-        async function wallet() { try { if (!crypto.subtle) throw Error('Requires HTTPS'); keyPair = await dbGet(); if (!keyPair) { keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify']); await dbPut(keyPair) } pub = new Uint8Array(await crypto.subtle.exportKey('raw', keyPair.publicKey)); walletId = b58enc(pub); $('walletId').textContent = walletId.slice(0, 7) + '…' + walletId.slice(-7); $('walletId').title = walletId; status('walletState', 'Ready', 'good'); $('progress').textContent = 'Fund ' + walletId + ' with devnet SOL, then prepare while online.'; log('Devnet wallet ' + walletId) } catch (e) { log('Wallet: ' + e.message); status('walletState', 'Unavailable', 'bad'); $('progress').textContent = 'This browser must support WebCrypto Ed25519 (modern Safari/Bluefy).' } }
+        async function wallet() { try { if (!crypto.subtle) throw Error('Requires HTTPS'); keyPair = await dbGet(); if (!keyPair) { keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify']); await dbPut(keyPair) } pub = new Uint8Array(await crypto.subtle.exportKey('raw', keyPair.publicKey)); walletId = b58enc(pub); $('walletId').textContent = walletId.slice(0, 7) + '…' + walletId.slice(-7); $('walletId').title = walletId; $('walletAddressFull').value = walletId; status('walletState', 'Ready', 'good'); $('progress').textContent = 'Fund ' + walletId + ' with devnet SOL, then prepare while online.'; log('Devnet wallet ' + walletId) } catch (e) { log('Wallet: ' + e.message); status('walletState', 'Unavailable', 'bad'); $('progress').textContent = 'This browser must support WebCrypto Ed25519 (modern Safari/Bluefy).' } }
         async function rpc(method, params = []) { let r = await fetch(RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) }); if (!r.ok) throw Error('RPC HTTP ' + r.status); let j = await r.json(); if (j.error) throw Error(j.error.message); return j.result }
         function onNotify(e) { const parts = new TextDecoder().decode(e.target.value).split('|'); if (parts[0] === 'A' && parts.length === 3) { let k = parts[1] + '|' + parts[2], f = ackWaiters.get(k); if (f) { ackWaiters.delete(k); f() } } if (parts[0] === 'R' && parts.length === 3) { let f = resultWaiters.get(parts[1]); if (f) { resultWaiters.delete(parts[1]); f(parts[2]) } } }
         async function connect() { try { if (!navigator.bluetooth) throw Error('Open in Bluefy on HTTPS'); device = await navigator.bluetooth.requestDevice({ filters: [{ name: 'Gridless-Node' }], optionalServices: [SERVICE] }); device.addEventListener('gattserverdisconnected', () => { rx = null; status('bleState', 'Disconnected', 'bad') }); let g = await device.gatt.connect(), s = await g.getPrimaryService(SERVICE); rx = await s.getCharacteristic(RX); tx = await s.getCharacteristic(TX); await tx.startNotifications(); tx.addEventListener('characteristicvaluechanged', onNotify); status('bleState', 'Connected', 'good') } catch (e) { log('BLE: ' + e.message); status('bleState', 'Error', 'bad') } }
@@ -1250,7 +1282,7 @@
         function makePdf(jpg) { const enc = new TextEncoder(), parts = []; let len = 0, offsets = [0]; function add(s) { let b = typeof s === 'string' ? enc.encode(s) : s; parts.push(b); len += b.length } function obj(i, s) { offsets[i] = len; add(i + ' 0 obj\n' + s + '\nendobj\n') } add('%PDF-1.4\n'); obj(1, '<< /Type /Catalog /Pages 2 0 R >>'); obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>'); obj(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 500 675] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'); offsets[4] = len; add('4 0 obj\n<< /Type /XObject /Subtype /Image /Width 1000 /Height 1350 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpg.length + ' >>\nstream\n'); add(jpg); add('\nendstream\nendobj\n'); let cmd = 'q\n500 0 0 675 0 0 cm\n/Im0 Do\nQ\n'; obj(5, '<< /Length ' + cmd.length + ' >>\nstream\n' + cmd + 'endstream'); let pos = len; add('xref\n0 6\n0000000000 65535 f \n'); for (let i = 1; i <= 5; i++)add(String(offsets[i]).padStart(10, '0') + ' 00000 n \n'); add('trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + pos + '\n%%EOF'); return new Blob(parts, { type: 'application/pdf' }) }
         async function exportReceipt(kind) { try { let jpg = jpegBytes(), pdf = kind === 'pdf', blob = pdf ? makePdf(jpg) : new Blob([jpg], { type: 'image/jpeg' }), name = 'gridless-devnet-' + payment.signature.slice(0, 12) + (pdf ? '.pdf' : '.jpg'); let file = new File([blob], name, { type: blob.type }); if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: 'Gridless receipt' }); return } let url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name; a.click(); $('progress').textContent = 'If no download appeared, open receipt in Safari and save from Share.'; setTimeout(() => URL.revokeObjectURL(url), 60000) } catch (e) { log('Export: ' + e.message) } }
         function download() { if (!payment) return; let data = { ...payment, raw: b64(payment.raw), network: 'solana-devnet', status: receiptStatus }; delete data.rawBytes; let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })); a.download = 'gridless-devnet.json'; a.click() }
-        $('walletBtn').onclick = wallet; $('connectBtn').onclick = connect; $('signBtn').onclick = sign; $('sendBtn').onclick = send; $('jpgBtn').onclick = () => exportReceipt('jpg'); $('pdfBtn').onclick = () => exportReceipt('pdf'); $('downloadBtn').onclick = download; $('viewReceipt').onclick = () => { $('successOverlay').classList.remove('show'); $('receipt').scrollIntoView({ behavior: 'smooth' }) }; if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(e => log('SW ' + e.message)); wallet();
+        $('copyWalletBtn').onclick = async () => { if (!walletId) { $('copyWalletStatus').textContent = 'Create your wallet first'; return } try { if (!navigator.clipboard?.writeText) throw Error('Clipboard unavailable'); await navigator.clipboard.writeText(walletId); $('copyWalletStatus').textContent = 'Copied! Paste it into the Devnet faucet.' } catch (e) { const field = $('walletAddressFull'); field.focus(); field.select(); field.setSelectionRange(0, field.value.length); try { if (document.execCommand('copy')) { $('copyWalletStatus').textContent = 'Copied! Paste it into the Devnet faucet.'; return } } catch (_) { } $('copyWalletStatus').textContent = 'Address selected — tap Copy in the selection menu.' } }; $('walletBtn').onclick = wallet; $('connectBtn').onclick = connect; $('signBtn').onclick = sign; $('sendBtn').onclick = send; $('jpgBtn').onclick = () => exportReceipt('jpg'); $('pdfBtn').onclick = () => exportReceipt('pdf'); $('downloadBtn').onclick = download; $('viewReceipt').onclick = () => { $('successOverlay').classList.remove('show'); $('receipt').scrollIntoView({ behavior: 'smooth' }) }; if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(e => log('SW ' + e.message)); wallet();
     </script>
 </body>
 
