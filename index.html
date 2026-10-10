@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#101729">
+    <link rel="manifest" href="./manifest.json">
+    <title>Gridless · Offline Credits</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: system-ui, -apple-system, sans-serif
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            background: #0a1020;
+            color: #f5f7ff
+        }
+
+        main {
+            max-width: 530px;
+            margin: auto;
+            padding: 25px 18px 55px
+        }
+
+        h1 {
+            margin: 4px 0 0;
+            font-size: 32px
+        }
+
+        p {
+            color: #aebbd4;
+            line-height: 1.5
+        }
+
+        .sub {
+            margin-top: 2px
+        }
+
+        .panel {
+            background: #151f35;
+            border: 1px solid #2c3954;
+            border-radius: 18px;
+            padding: 19px;
+            margin: 17px 0
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: center
+        }
+
+        .muted {
+            color: #aebbd4;
+            font-size: 13px
+        }
+
+        .status {
+            font-weight: 700;
+            color: #ffcf7b
+        }
+
+        .good {
+            color: #6de4aa
+        }
+
+        .bad {
+            color: #ff8c94
+        }
+
+        button {
+            border: 0;
+            border-radius: 12px;
+            background: #8b80ff;
+            color: #080d1c;
+            font-size: 16px;
+            font-weight: 750;
+            padding: 14px;
+            width: 100%;
+            margin-top: 11px;
+            cursor: pointer
+        }
+
+        button.secondary {
+            background: #2b3958;
+            color: #fff
+        }
+
+        button:disabled {
+            opacity: .45;
+            cursor: not-allowed
+        }
+
+        label {
+            display: block;
+            color: #c8d2e8;
+            font-size: 14px;
+            margin-top: 12px
+        }
+
+        input {
+            width: 100%;
+            padding: 13px;
+            margin-top: 7px;
+            border: 1px solid #40516f;
+            border-radius: 11px;
+            background: #0d1628;
+            color: white;
+            font-size: 17px
+        }
+
+        pre {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-size: 12px;
+            color: #aebbd4;
+            max-height: 150px;
+            overflow: auto
+        }
+
+        #receipt {
+            display: none;
+            border: 1px solid #5366a1;
+            border-radius: 15px;
+            padding: 17px;
+            margin-top: 16px
+        }
+
+        #receipt h2 {
+            margin: 0 0 8px
+        }
+
+        .big {
+            font-size: 33px;
+            font-weight: 800;
+            margin: 8px 0
+        }
+
+        .tiny {
+            font-size: 11px;
+            word-break: break-all;
+            color: #aebbd4
+        }
+
+        small {
+            color: #aebbd4
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <div class="row">
+            <div>
+                <h1>⚡ GRIDLESS</h1>
+                <p class="sub">Offline-signed credit payments</p>
+            </div><span class="muted">DEMO · NO CRYPTO</span>
+        </div>
+        <div class="panel">
+            <div class="row"><strong>1 · Wallet</strong><span id="walletState" class="status">Loading...</span></div>
+            <p>Automatically creates a device-only P-256 signing key. Your wallet starts with 100.00 simulated GRID
+                credits on the gateway.</p>
+            <div class="muted">Wallet ID: <span id="walletId">—</span></div><button id="walletBtn"
+                class="secondary">Create / load demo wallet</button>
+        </div>
+        <div class="panel">
+            <div class="row"><strong>2 · Bluetooth</strong><span id="bleState" class="status">Disconnected</span></div>
+            <p>Connect your iPhone to the Gridless ESP32 relay. The Raspberry Pi must also be connected.</p><button
+                id="connectBtn">Connect to Gridless-Node</button>
+        </div>
+        <div class="panel"><strong>3 · Authorize payment</strong><label>Merchant / recipient name<input id="recipient"
+                    value="Recepient" maxlength="32" autocomplete="off"></label><label>Amount (GRID credits)<input
+                    id="amount" type="number" min="0.01" max="1000" step="0.01" value="10.00"
+                    inputmode="decimal"></label><button id="signBtn" class="secondary">Sign payment
+                offline</button><button id="sendBtn" disabled>Send via BLE to Raspberry Pi</button>
+            <p id="progress" class="muted">Create your wallet, then sign a payment.</p>
+            <div id="receipt">
+                <div class="row">
+                    <h2>Gridless receipt</h2><strong id="receiptStatus" class="status">SIGNED</strong>
+                </div>
+                <div id="receiptAmount" class="big"></div>
+                <div id="receiptTo"></div>
+                <p id="receiptDetail" class="muted"></p>
+                <div id="receiptId" class="tiny"></div><button id="downloadBtn" class="secondary">Save receipt
+                    JSON</button>
+            </div>
+        </div>
+        <div class="panel"><strong>Activity</strong>
+            <pre id="log">Ready. Open this page in Bluefy on iPhone.</pre>
+        </div><small>Proof of concept: a signed authorization is not a real-money transfer. The Pi validates the
+            signature, prevents duplicate payment IDs, and updates a local simulated ledger. Keep Bluefy in the
+            foreground while sending.</small>
+    </main>
+    <script>
+        'use strict';
+        const SERVICE = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E', RX = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E', TX = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E';
+        const $ = id => document.getElementById(id);
+        let keyPair = null, publicKeyB64 = '', walletId = '', device = null, rx = null, tx = null, payment = null, receiptStatus = 'NONE', sending = false;
+        const ackWaiters = new Map(), resultWaiters = new Map();
+        function log(s) {$('log').textContent = `${new Date().toLocaleTimeString()} ${s}\n` + $('log').textContent.slice(0, 3500)}
+        function status(id, text, cls = 'status') {$(id).textContent = text; $(id).className = cls}
+        function b64(bytes) {let binary = ''; for (let i = 0; i < bytes.length; i++)binary += String.fromCharCode(bytes[i]); return btoa(binary)}
+        function bytes(s) {return new TextEncoder().encode(s)}
+        function randhex(n) {const a = new Uint8Array(n); crypto.getRandomValues(a); return [...a].map(x => x.toString(16).padStart(2, '0')).join('')}
+        function openDb() {return new Promise((resolve, reject) => {const req = indexedDB.open('gridless-wallet-v1', 1); req.onupgradeneeded = () => req.result.createObjectStore('keys'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error)})}
+        async function storedKey() {const db = await openDb(); return new Promise((resolve, reject) => {const tr = db.transaction('keys', 'readonly'); const req = tr.objectStore('keys').get('demo'); req.onsuccess = () => {db.close(); resolve(req.result)}; req.onerror = () => {db.close(); reject(req.error)}})}
+        async function saveKey(k) {const db = await openDb(); return new Promise((resolve, reject) => {const tr = db.transaction('keys', 'readwrite'); tr.objectStore('keys').put(k, 'demo'); tr.oncomplete = () => {db.close(); resolve()}; tr.onerror = () => {db.close(); reject(tr.error)}})}
+        async function wallet() {try {if (!crypto.subtle) throw Error('Web Crypto unavailable: use HTTPS'); keyPair = await storedKey(); if (!keyPair) {keyPair = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, false, ['sign', 'verify']); await saveKey(keyPair); log('New wallet created and stored on this device')} const der = new Uint8Array(await crypto.subtle.exportKey('spki', keyPair.publicKey)); publicKeyB64 = b64(der); const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', der)); walletId = [...digest.slice(0, 6)].map(x => x.toString(16).padStart(2, '0')).join(''); $('walletId').textContent = walletId; status('walletState', 'Ready', 'good'); log('Wallet ' + walletId + ' ready')} catch (e) {status('walletState', 'Error', 'bad'); log('Wallet error: ' + e.message)} }
+        function onNotify(event) {const s = new TextDecoder().decode(event.target.value); const parts = s.split('|'); if (parts[0] === 'A' && parts.length === 3) {const k = parts[1] + '|' + parts[2]; if (ackWaiters.has(k)) {ackWaiters.get(k)(); ackWaiters.delete(k)} } if (parts[0] === 'R' && parts.length === 3) {if (resultWaiters.has(parts[1])) {resultWaiters.get(parts[1])(parts[2]); resultWaiters.delete(parts[1])} } }
+        async function connect() {try {if (!navigator.bluetooth) throw Error('Web Bluetooth unavailable. Open HTTPS URL in Bluefy.'); device = await navigator.bluetooth.requestDevice({filters: [{name: 'Gridless-Node'}], optionalServices: [SERVICE]}); device.addEventListener('gattserverdisconnected', () => {rx = null; tx = null; status('bleState', 'Disconnected', 'bad'); log('BLE disconnected')}); const server = await device.gatt.connect(); const svc = await server.getPrimaryService(SERVICE); rx = await svc.getCharacteristic(RX); tx = await svc.getCharacteristic(TX); await tx.startNotifications(); tx.addEventListener('characteristicvaluechanged', onNotify); status('bleState', 'Connected', 'good'); log('Connected to ESP32. Pi must also be connected.')} catch (e) {status('bleState', 'Error', 'bad'); log('BLE error: ' + e.message)} }
+        async function sign() {try {if (!keyPair) throw Error('Create wallet first'); const to = $('recipient').value.trim(), amountText = $('amount').value.trim(); if (!/^[A-Za-z0-9 _-]{1,32}$/.test(to)) throw Error('Recipient: use 1-32 letters/numbers/spaces/-/_'); if (!/^\d+(\.\d{1,2})?$/.test(amountText)) throw Error('Enter amount with up to two decimals'); const amount = Math.round(Number(amountText) * 100); if (!Number.isSafeInteger(amount) || amount < 1 || amount > 100000) throw Error('Amount must be 0.01-1000.00'); const payload = {version: 1, id: randhex(8), from: walletId, to, amount, timestamp: Date.now(), publicKey: publicKeyB64}; const signature = new Uint8Array(await crypto.subtle.sign({name: 'ECDSA', hash: 'SHA-256'}, keyPair.privateKey, bytes(JSON.stringify(payload)))); if (signature.length !== 64) throw Error('Unexpected signature format'); payment = {payload, signature: b64(signature)}; receiptStatus = 'SIGNED'; showReceipt(); $('sendBtn').disabled = false; $('progress').textContent = 'Signed locally. You may turn on airplane mode (leave Bluetooth ON).'; log('Signed payment ' + payload.id + ' offline')} catch (e) {log('Signing error: ' + e.message)} }
+        function showReceipt() {if (!payment) return; const p = payment.payload; $('receipt').style.display = 'block'; status('receiptStatus', receiptStatus, receiptStatus === 'ACCEPTED' ? 'good' : receiptStatus === 'REJECTED' ? 'bad' : 'status'); $('receiptAmount').textContent = (p.amount / 100).toFixed(2) + ' GRID'; $('receiptTo').textContent = 'To ' + p.to; $('receiptId').textContent = 'Receipt ID: ' + p.id + ' · Sender: ' + p.from; $('receiptDetail').textContent = receiptStatus === 'ACCEPTED' ? 'Gateway verified signature and updated simulated ledger.' : receiptStatus === 'SIGNED' ? 'Locally signed; NOT yet accepted by gateway.' : receiptStatus === 'SENT' ? 'Frames delivered; waiting for gateway verification.' : 'Gateway did not confirm acceptance.'}
+        function waitAck(k, ms) {return new Promise((resolve, reject) => {const timer = setTimeout(() => {ackWaiters.delete(k); reject(Error('ACK timeout'))}, ms); ackWaiters.set(k, () => {clearTimeout(timer); resolve()})})}
+        async function writeFrame(s) {const frame = bytes(s); if (frame.length > 20) throw Error('BLE frame too long: ' + frame.length); if (rx.writeValueWithResponse) await rx.writeValueWithResponse(frame); else await rx.writeValue(frame)}
+        async function send() {if (sending) return; try {if (!payment) throw Error('Sign a payment first'); if (!rx || !device?.gatt?.connected) throw Error('Connect BLE first'); sending = true; $('sendBtn').disabled = true; const tid = randhex(2); const data = b64(bytes(JSON.stringify(payment))); const pieces = data.match(/.{1,7}/g) || []; if (pieces.length > 255) throw Error('Payment too large for BLE protocol'); const total = pieces.length.toString(16).padStart(2, '0'); let resultResolve; const resultPromise = new Promise(resolve => {resultResolve = resolve}); resultWaiters.set(tid, resultResolve); for (let i = 0; i < pieces.length; i++) {const ix = i.toString(16).padStart(2, '0'), key = tid + '|' + ix, frame = `D|${tid}|${ix}|${total}|${pieces[i]}`; let ok = false; for (let attempt = 0; attempt < 5; attempt++) {const waiter = waitAck(key, 2200); try {await writeFrame(frame); await waiter; ok = true; break} catch (e) {ackWaiters.delete(key); log('Retry frame ' + (i + 1) + ' (' + (attempt + 1) + '/5)')} } if (!ok) throw Error('No gateway ACK for frame ' + (i + 1)); $('progress').textContent = `Relayed ${i + 1}/${pieces.length} frames`;} receiptStatus = 'SENT'; showReceipt(); $('progress').textContent = 'All frames ACKed. Waiting for gateway result...'; const outcome = await Promise.race([resultPromise, new Promise(resolve => setTimeout(() => resolve('TIMEOUT'), 12000))]); resultWaiters.delete(tid); receiptStatus = outcome === 'OK' || outcome === 'DUP' ? 'ACCEPTED' : 'REJECTED'; showReceipt(); $('progress').textContent = outcome === 'OK' ? '✓ Verified and recorded by Pi' : outcome === 'DUP' ? 'Already recorded (no duplicate debit)' : outcome === 'FUNDS' ? 'Insufficient simulated credits' : outcome === 'TIMEOUT' ? 'No final confirmation; check Pi log' : 'Gateway rejected payment'; log('Gateway result: ' + outcome)} catch (e) {receiptStatus = 'UNCONFIRMED'; showReceipt(); log('Send error: ' + e.message); $('progress').textContent = e.message} finally {sending = false; $('sendBtn').disabled = !payment} }
+        function download() {if (!payment) return; const data = {...payment, status: receiptStatus, note: 'SIMULATED CREDITS — NOT CRYPTOCURRENCY OR REAL MONEY'}; const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'})); const a = document.createElement('a'); a.href = url; a.download = 'gridless-' + payment.payload.id + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)}
+        $('walletBtn').onclick = wallet; $('connectBtn').onclick = connect; $('signBtn').onclick = sign; $('sendBtn').onclick = send; $('downloadBtn').onclick = download;
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(e => log('Offline cache: ' + e.message));
+        wallet();
+    </script>
+</body>
+
+</html>
