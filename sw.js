@@ -1,4 +1,4 @@
-const CACHE='gridless-midnight-v5-ios-export';
+const CACHE='gridless-devnet-v1';
 const ASSETS=['./','./index.html','./manifest.json','./sw.js'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',event=>{event.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()]))});
